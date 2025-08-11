@@ -1,33 +1,43 @@
-# Network Security Testing Framework Dependencies
-# Core networking and packet manipulation
+# 网络操作核心库
 scapy>=2.4.5
 
-# Terminal output formatting
-colorama>=0.4.4
-
-# HTTP requests and web testing
-requests>=2.25.1
-
-# Cryptographic operations
-pycryptodome>=3.15.0
-
-# Network interface management
+# 系统和进程管理
 psutil>=5.8.0
 
-# Concurrent processing
-concurrent-futures>=3.1.1
-
-# Configuration file handling
-PyYAML>=6.0
-
-# Progress bars and status indicators
+# 命令行界面和输出美化
+colorama>=0.4.4
 tqdm>=4.62.0
 
-# Command line argument parsing (built-in, listed for completeness)
-# argparse - included in Python standard library
+# 网络请求和HTTP操作
+requests>=2.26.0
 
-# JSON handling (built-in, listed for completeness)
-# json - included in Python standard library
+# 加密和哈希处理
+pycryptodome>=3.15.0
 
-# Regular expressions (built-in, listed for completeness)
-# re - included in Python standard library
+# 配置文件处理
+PyYAML>=6.0
+
+# 并发处理
+concurrent-futures>=3.1.1
+
+# 数据处理
+pandas>=1.3.0
+numpy>=1.21.0
+
+# 网络扫描和发现
+python-nmap>=0.6.1
+
+# 密码学工具
+hashlib-compat>=1.0.1
+
+# 日志处理
+loguru>=0.6.0
+
+# 命令行参数解析（Python内置，但列出以供参考）
+# argparse - 内置模块
+
+# 网络接口操作
+netifaces>=0.11.0
+
+# 时间处理
+python-dateutil>=2.8.2
