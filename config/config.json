@@ -1,0 +1,63 @@
+{
+  "logging": {
+    "level": "INFO",
+    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    "file": "logs/traes.log",
+    "max_size": "10MB",
+    "backup_count": 5
+  },
+  "network": {
+    "timeout": 5,
+    "retry_count": 3,
+    "default_interface": "auto",
+    "packet_size": 1024
+  },
+  "arp_attack": {
+    "default_interval": 1.0,
+    "max_targets": 254,
+    "spoof_detection": true,
+    "restore_on_exit": true
+  },
+  "dhcp_attack": {
+    "default_threads": 10,
+    "max_threads": 50,
+    "request_timeout": 10,
+    "discover_interval": 0.1,
+    "client_id_prefix": "TRAES"
+  },
+  "bruteforce": {
+    "default_threads": 5,
+    "max_threads": 20,
+    "connection_timeout": 10,
+    "delay_between_attempts": 0.5,
+    "max_attempts_per_target": 1000
+  },
+  "security": {
+    "whitelist_enabled": false,
+    "whitelist_ips": [],
+    "blacklist_enabled": false,
+    "blacklist_ips": [],
+    "safe_mode": false
+  },
+  "rate_limiting": {
+    "enabled": true,
+    "max_requests_per_second": 10,
+    "burst_size": 20
+  },
+  "output": {
+    "format": "json",
+    "save_results": true,
+    "results_directory": "results",
+    "timestamp_format": "%Y%m%d_%H%M%S"
+  },
+  "performance": {
+    "memory_limit": "512MB",
+    "cpu_limit": 80,
+    "optimize_for": "speed"
+  },
+  "dictionaries": {
+    "usernames": "data/usernames.txt",
+    "passwords": "data/passwords.txt",
+    "common_ports": "data/common_ports.txt"
+  }
+}
