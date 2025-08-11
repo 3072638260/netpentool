@@ -1,43 +1,44 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-TRAES 网络工具模块
+TRAES - 网络工具模块
 
-提供网络相关的实用工具函数，包括：
-- IP地址操作
+提供网络相关的工具函数，包括：
+- IP地址操作和验证
 - 网络接口管理
 - 网络连接检测
 - MAC地址操作
 - 网络配置获取
 - 代理设置
+- ARP表操作
 
-作者: Security Researcher
-版本: 1.0.0
+Author: TRAES Team
+Date: 2024
 """
 
-import sys
 import socket
 import struct
-import random
 import ipaddress
 import subprocess
-from typing import List, Optional, Dict, Any, Tuple
+import sys
+import random
+import requests
+from typing import List, Dict, Optional, Any, Tuple
 
 try:
-    import requests
     import psutil
-    import netifaces
-    from loguru import logger
-except ImportError as e:
-    print(f"缺少必要的依赖库: {e}")
-    print("请运行: pip install requests psutil netifaces loguru")
-    sys.exit(1)
+except ImportError:
+    psutil = None
+
+from .logger import get_logger
+
+logger = get_logger(__name__)
 
 class NetworkUtils:
     """
     网络工具类
     
-    提供各种网络相关的实用功能。
+    提供各种网络相关的工具函数
     """
     
     @staticmethod
@@ -63,7 +64,7 @@ class NetworkUtils:
         检查网络地址是否有效
         
         Args:
-            network (str): 网络地址字符串 (如 192.168.1.0/24)
+            network (str): 网络地址 (如 192.168.1.0/24)
             
         Returns:
             bool: 有效返回True
@@ -92,58 +93,52 @@ class NetworkUtils:
             return False
     
     @staticmethod
-    def get_network_interfaces() -> Dict[str, Dict[str, Any]]:
+    def get_network_interfaces() -> List[Dict[str, Any]]:
         """
         获取网络接口信息
         
         Returns:
-            dict: 网络接口信息字典
+            list: 网络接口信息列表
         """
-        interfaces = {}
+        interfaces = []
+        
+        if not psutil:
+            logger.warning("psutil未安装，无法获取网络接口信息")
+            return interfaces
         
         try:
-            for interface in netifaces.interfaces():
+            # 获取网络接口统计信息
+            net_if_stats = psutil.net_if_stats()
+            # 获取网络接口地址信息
+            net_if_addrs = psutil.net_if_addrs()
+            
+            for interface_name, addrs in net_if_addrs.items():
                 interface_info = {
-                    'name': interface,
-                    'addresses': {},
-                    'status': 'unknown'
+                    'name': interface_name,
+                    'addresses': [],
+                    'is_up': False,
+                    'speed': 0,
+                    'mtu': 0
                 }
                 
-                # 获取地址信息
-                addrs = netifaces.ifaddresses(interface)
-                
-                # IPv4地址
-                if netifaces.AF_INET in addrs:
-                    ipv4_info = addrs[netifaces.AF_INET][0]
-                    interface_info['addresses']['ipv4'] = {
-                        'addr': ipv4_info.get('addr'),
-                        'netmask': ipv4_info.get('netmask'),
-                        'broadcast': ipv4_info.get('broadcast')
-                    }
-                
-                # IPv6地址
-                if netifaces.AF_INET6 in addrs:
-                    ipv6_info = addrs[netifaces.AF_INET6][0]
-                    interface_info['addresses']['ipv6'] = {
-                        'addr': ipv6_info.get('addr'),
-                        'netmask': ipv6_info.get('netmask')
-                    }
-                
-                # MAC地址
-                if netifaces.AF_LINK in addrs:
-                    mac_info = addrs[netifaces.AF_LINK][0]
-                    interface_info['addresses']['mac'] = mac_info.get('addr')
-                
-                # 获取接口状态
-                try:
-                    stats = psutil.net_if_stats()[interface]
-                    interface_info['status'] = 'up' if stats.isup else 'down'
+                # 获取接口状态信息
+                if interface_name in net_if_stats:
+                    stats = net_if_stats[interface_name]
+                    interface_info['is_up'] = stats.isup
                     interface_info['speed'] = stats.speed
                     interface_info['mtu'] = stats.mtu
-                except KeyError:
-                    pass
                 
-                interfaces[interface] = interface_info
+                # 获取地址信息
+                for addr in addrs:
+                    addr_info = {
+                        'family': addr.family.name,
+                        'address': addr.address,
+                        'netmask': addr.netmask,
+                        'broadcast': addr.broadcast
+                    }
+                    interface_info['addresses'].append(addr_info)
+                
+                interfaces.append(interface_info)
                 
         except Exception as e:
             logger.error(f"获取网络接口信息失败: {e}")
@@ -159,12 +154,33 @@ class NetworkUtils:
             str: 默认网关IP地址
         """
         try:
-            gateways = netifaces.gateways()
-            default_gateway = gateways.get('default')
-            
-            if default_gateway and netifaces.AF_INET in default_gateway:
-                return default_gateway[netifaces.AF_INET][0]
-                
+            if sys.platform.startswith('win'):
+                # Windows系统
+                result = subprocess.run(['route', 'print', '0.0.0.0'], 
+                                      capture_output=True, text=True)
+                if result.returncode == 0:
+                    lines = result.stdout.split('\n')
+                    for line in lines:
+                        if '0.0.0.0' in line and 'Gateway' not in line:
+                            parts = line.split()
+                            if len(parts) >= 3:
+                                gateway = parts[2]
+                                if NetworkUtils.is_valid_ip(gateway):
+                                    return gateway
+            else:
+                # Linux/Unix系统
+                result = subprocess.run(['ip', 'route', 'show', 'default'], 
+                                      capture_output=True, text=True)
+                if result.returncode == 0:
+                    lines = result.stdout.split('\n')
+                    for line in lines:
+                        if 'default via' in line:
+                            parts = line.split()
+                            if len(parts) >= 3:
+                                gateway = parts[2]
+                                if NetworkUtils.is_valid_ip(gateway):
+                                    return gateway
+                                    
         except Exception as e:
             logger.error(f"获取默认网关失败: {e}")
         
@@ -179,18 +195,14 @@ class NetworkUtils:
             str: 本机IP地址
         """
         try:
-            # 连接到外部地址获取本机IP
+            # 连接到一个远程地址来获取本地IP
             with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
                 s.connect(("8.8.8.8", 80))
-                return s.getsockname()[0]
-        except Exception:
-            try:
-                # 备用方法：获取主机名对应的IP
-                hostname = socket.gethostname()
-                return socket.gethostbyname(hostname)
-            except Exception as e:
-                logger.error(f"获取本机IP失败: {e}")
-                return None
+                local_ip = s.getsockname()[0]
+                return local_ip
+        except Exception as e:
+            logger.error(f"获取本机IP失败: {e}")
+            return None
     
     @staticmethod
     def get_public_ip() -> Optional[str]:
