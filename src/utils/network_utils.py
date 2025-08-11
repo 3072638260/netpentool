@@ -569,7 +569,7 @@ def get_local_network() -> Optional[str]:
         if local_ip:
             # 假设是/24网络
             ip_parts = local_ip.split('.')
-            network = f"{'.'.join(ip_parts[:3])}.0/24"
+            network = f"{".join(ip_parts[:3])}.0/24"
             return network
     except Exception as e:
         logger.error(f"获取本地网络失败: {e}")
