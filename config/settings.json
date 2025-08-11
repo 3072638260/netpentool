@@ -1,0 +1,56 @@
+{
+  "logging": {
+    "level": "INFO",
+    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    "file_path": "logs/netpentool.log",
+    "max_file_size": "10MB",
+    "backup_count": 5,
+    "console_output": true
+  },
+  "network": {
+    "default_interface": "auto",
+    "timeout": 5,
+    "retry_attempts": 3,
+    "packet_delay": 0.1,
+    "max_concurrent_threads": 10
+  },
+  "attacks": {
+    "arp": {
+      "spoof_interval": 2,
+      "restore_on_exit": true,
+      "stealth_mode": false,
+      "random_mac": false
+    },
+    "dhcp": {
+      "discover_timeout": 10,
+      "lease_time": 3600,
+      "server_ip": "192.168.1.254",
+      "dns_servers": ["8.8.8.8", "8.8.4.4"]
+    },
+    "bruteforce": {
+      "max_attempts_per_target": 1000,
+      "delay_between_attempts": 0.5,
+      "connection_timeout": 10,
+      "supported_protocols": ["ssh", "ftp", "telnet", "http", "https"]
+    }
+  },
+  "security": {
+    "whitelist_enabled": true,
+    "whitelist_file": "data/whitelist.json",
+    "auto_exclude_gateway": true,
+    "exclude_broadcast": true,
+    "exclude_multicast": true
+  },
+  "output": {
+    "results_directory": "results",
+    "export_formats": ["json", "csv"],
+    "include_timestamps": true,
+    "compress_logs": false
+  },
+  "performance": {
+    "memory_limit_mb": 512,
+    "cpu_usage_limit": 80,
+    "disk_space_check": true,
+    "cleanup_temp_files": true
+  }
+}
