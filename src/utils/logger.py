@@ -3,38 +3,52 @@
 """
 TRAES 日志管理模块
 
-提供统一的日志管理功能，包括：
-- 多级别日志记录
-- 文件和控制台输出
-- 日志格式化
-- 日志轮转
-- 彩色输出
-- 性能监控
+提供多级别日志记录、文件和控制台输出、日志格式化、日志轮转、彩色输出和性能监控等功能。
 
-作者: Security Researcher
+主要功能:
+- 多级别日志记录 (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+- 文件和控制台输出
+- 日志格式化和彩色输出
+- 日志轮转和归档
+- 性能监控和计时
+- 安全事件记录
+- 会话日志管理
+
+作者: TRAES Team
 版本: 1.0.0
 """
 
-import sys
 import os
+import sys
 import time
+from datetime import datetime
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Dict, Any, Optional
 
+# 第三方库
 try:
     from loguru import logger
-    from colorama import Fore, Back, Style, init
-    init(autoreset=True)  # 初始化colorama
-except ImportError as e:
-    print(f"缺少必要的依赖库: {e}")
-    print("请运行: pip install loguru colorama")
+except ImportError:
+    print("警告: loguru 库未安装，请运行: pip install loguru")
     sys.exit(1)
+
+try:
+    from colorama import init, Fore, Back, Style
+    init(autoreset=True)  # 自动重置颜色
+except ImportError:
+    print("警告: colorama 库未安装，请运行: pip install colorama")
+    # 提供备用的空实现
+    class Fore:
+        RED = GREEN = YELLOW = BLUE = MAGENTA = CYAN = WHITE = BLACK = ''
+    
+    class Style:
+        BRIGHT = DIM = NORMAL = RESET_ALL = ''
 
 class TraesLogger:
     """
     TRAES 日志管理器
     
-    提供统一的日志管理功能。
+    提供统一的日志记录接口，支持多种输出格式和日志级别
     """
     
     def __init__(self, config: Dict[str, Any] = None):
@@ -44,38 +58,43 @@ class TraesLogger:
         Args:
             config (dict): 日志配置字典
         """
-        self.config = config or {}
-        self.log_config = self.config.get('logging', {})
+        # 默认配置
+        self.default_config = {
+            'log_level': 'INFO',
+            'log_file': 'logs/traes.log',
+            'max_file_size': '10 MB',
+            'backup_count': 5,
+            'console_output': True,
+            'file_output': True,
+            'colored_output': True,
+            'performance_logs': True,
+            'format': {
+                'console': '<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>',
+                'file': '{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}'
+            }
+        }
         
-        # 日志配置
-        self.log_level = self.log_config.get('level', 'INFO')
-        self.log_file = self.log_config.get('file', 'logs/traes.log')
-        self.max_file_size = self.log_config.get('max_file_size', '10 MB')
-        self.backup_count = self.log_config.get('backup_count', 5)
-        self.console_output = self.log_config.get('console_output', True)
-        self.file_output = self.log_config.get('file_output', True)
-        self.colored_output = self.log_config.get('colored_output', True)
+        # 合并用户配置
+        self.config = self.default_config.copy()
+        if config:
+            self.config.update(config)
         
-        # 日志格式
-        self.console_format = (
-            "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | "
-            "<level>{level: <8}</level> | "
-            "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - "
-            "<level>{message}</level>"
-        )
+        # 配置属性
+        self.log_level = self.config['log_level']
+        self.log_file = self.config['log_file']
+        self.console_output = self.config['console_output']
+        self.file_output = self.config['file_output']
+        self.colored_output = self.config['colored_output']
+        self.performance_logs = self.config['performance_logs']
         
-        self.file_format = (
-            "{time:YYYY-MM-DD HH:mm:ss.SSS} | "
-            "{level: <8} | "
-            "{name}:{function}:{line} - "
-            "{message}"
-        )
+        # 格式配置
+        self.console_format = self.config['format']['console']
+        self.file_format = self.config['format']['file']
         
         # 性能监控
-        self.performance_logs = self.log_config.get('performance_logs', False)
         self.start_times = {}
         
-        # 初始化日志器
+        # 设置日志器
         self._setup_logger()
     
     def _setup_logger(self):
@@ -87,43 +106,28 @@ class TraesLogger:
         
         # 控制台输出
         if self.console_output:
-            if self.colored_output:
-                logger.add(
-                    sys.stderr,
-                    format=self.console_format,
-                    level=self.log_level,
-                    colorize=True
-                )
-            else:
-                logger.add(
-                    sys.stderr,
-                    format=self.file_format,
-                    level=self.log_level,
-                    colorize=False
-                )
+            console_format = self.console_format if self.colored_output else self.file_format
+            logger.add(
+                sys.stderr,
+                format=console_format,
+                level=self.log_level,
+                colorize=self.colored_output
+            )
         
         # 文件输出
         if self.file_output:
             # 确保日志目录存在
-            log_path = Path(self.log_file)
-            log_path.parent.mkdir(parents=True, exist_ok=True)
+            Path(self.log_file).parent.mkdir(parents=True, exist_ok=True)
             
             logger.add(
                 self.log_file,
                 format=self.file_format,
                 level=self.log_level,
-                rotation=self.max_file_size,
-                retention=self.backup_count,
+                rotation=self.config['max_file_size'],
+                retention=self.config['backup_count'],
                 compression="zip",
                 encoding="utf-8"
             )
-        
-        # 添加自定义级别
-        logger.level("SUCCESS", no=25, color="<green><bold>")
-        logger.level("ATTACK", no=35, color="<red><bold>")
-        logger.level("SCAN", no=15, color="<blue>")
-        
-        logger.info("日志系统初始化完成")
     
     def get_logger(self, name: str = "TRAES"):
         """
@@ -137,43 +141,103 @@ class TraesLogger:
         """
         return logger.bind(name=name)
     
-    def log_attack(self, message: str, target: str = None, **kwargs):
+    def log_attack(self, message: str, target: str = None, attack_type: str = None, 
+                   payload: str = None, success: bool = None, **kwargs):
         """
         记录攻击日志
         
         Args:
             message (str): 日志消息
             target (str): 攻击目标
-            **kwargs: 额外参数
+            attack_type (str): 攻击类型
+            payload (str): 攻击载荷
+            success (bool): 是否成功
+            **kwargs: 其他参数
         """
-        if target:
-            message = f"[目标: {target}] {message}"
+        log_data = {
+            'type': 'attack',
+            'message': message,
+            'target': target,
+            'attack_type': attack_type,
+            'payload': payload,
+            'success': success,
+            'timestamp': datetime.now().isoformat()
+        }
+        log_data.update(kwargs)
         
-        logger.log("ATTACK", message, **kwargs)
+        # 构建日志消息
+        log_msg = f"[攻击] {message}"
+        if target:
+            log_msg += f" | 目标: {target}"
+        if attack_type:
+            log_msg += f" | 类型: {attack_type}"
+        if success is not None:
+            status = "成功" if success else "失败"
+            log_msg += f" | 状态: {status}"
+        
+        # 根据成功状态选择日志级别
+        if success:
+            logger.success(log_msg, extra=log_data)
+        elif success is False:
+            logger.warning(log_msg, extra=log_data)
+        else:
+            logger.info(log_msg, extra=log_data)
     
-    def log_scan(self, message: str, target: str = None, **kwargs):
+    def log_scan(self, message: str, target: str = None, scan_type: str = None, 
+                 results_count: int = None, **kwargs):
         """
         记录扫描日志
         
         Args:
             message (str): 日志消息
             target (str): 扫描目标
-            **kwargs: 额外参数
+            scan_type (str): 扫描类型
+            results_count (int): 结果数量
+            **kwargs: 其他参数
         """
-        if target:
-            message = f"[目标: {target}] {message}"
+        log_data = {
+            'type': 'scan',
+            'message': message,
+            'target': target,
+            'scan_type': scan_type,
+            'results_count': results_count,
+            'timestamp': datetime.now().isoformat()
+        }
+        log_data.update(kwargs)
         
-        logger.log("SCAN", message, **kwargs)
+        # 构建日志消息
+        log_msg = f"[扫描] {message}"
+        if target:
+            log_msg += f" | 目标: {target}"
+        if scan_type:
+            log_msg += f" | 类型: {scan_type}"
+        if results_count is not None:
+            log_msg += f" | 结果: {results_count}个"
+        
+        logger.info(log_msg, extra=log_data)
     
-    def log_success(self, message: str, **kwargs):
+    def log_success(self, message: str, details: str = None, **kwargs):
         """
         记录成功日志
         
         Args:
-            message (str): 日志消息
-            **kwargs: 额外参数
+            message (str): 成功消息
+            details (str): 详细信息
+            **kwargs: 其他参数
         """
-        logger.log("SUCCESS", message, **kwargs)
+        log_data = {
+            'type': 'success',
+            'message': message,
+            'details': details,
+            'timestamp': datetime.now().isoformat()
+        }
+        log_data.update(kwargs)
+        
+        log_msg = f"[成功] {message}"
+        if details:
+            log_msg += f" | {details}"
+        
+        logger.success(log_msg, extra=log_data)
     
     def start_timer(self, operation: str):
         """
@@ -182,21 +246,31 @@ class TraesLogger:
         Args:
             operation (str): 操作名称
         """
+        self.start_times[operation] = time.time()
         if self.performance_logs:
-            self.start_times[operation] = time.time()
-            logger.debug(f"开始操作: {operation}")
+            logger.debug(f"开始计时: {operation}")
     
-    def end_timer(self, operation: str):
+    def end_timer(self, operation: str) -> float:
         """
         结束计时并记录
         
         Args:
             operation (str): 操作名称
+            
+        Returns:
+            float: 耗时（秒）
         """
-        if self.performance_logs and operation in self.start_times:
-            elapsed = time.time() - self.start_times[operation]
-            logger.info(f"操作 '{operation}' 完成，耗时: {elapsed:.2f}秒")
-            del self.start_times[operation]
+        if operation not in self.start_times:
+            logger.warning(f"未找到操作 '{operation}' 的开始时间")
+            return 0.0
+        
+        elapsed = time.time() - self.start_times[operation]
+        del self.start_times[operation]
+        
+        if self.performance_logs:
+            logger.info(f"操作完成: {operation} | 耗时: {elapsed:.3f}秒")
+        
+        return elapsed
     
     def log_error_with_traceback(self, message: str, exception: Exception = None):
         """
