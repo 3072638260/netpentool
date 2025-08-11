@@ -1,0 +1,66 @@
+MIT License
+
+Copyright (c) 2025 NetPenTool Contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+================================================================================
+SECURITY AND LEGAL DISCLAIMER
+================================================================================
+
+This software is designed exclusively for authorized security testing and 
+educational research purposes. By using this software, you acknowledge and 
+agree to the following terms:
+
+1. AUTHORIZED USE ONLY
+   - You must obtain explicit written authorization before testing any network,
+     system, or application that you do not own or have explicit permission to test.
+   - This software must not be used against any target without proper legal 
+     authorization.
+
+2. COMPLIANCE WITH LAWS
+   - You are solely responsible for ensuring compliance with all applicable 
+     local, state, federal, and international laws and regulations.
+   - Unauthorized access to computer systems may violate various laws including
+     but not limited to the Computer Fraud and Abuse Act and similar legislation
+     in other jurisdictions.
+
+3. ETHICAL USAGE
+   - This software must be used ethically and responsibly.
+   - It is intended to help security professionals identify and remediate 
+     vulnerabilities in systems they are authorized to test.
+   - Any malicious use is strictly prohibited and condemned.
+
+4. NO WARRANTY FOR ILLEGAL USE
+   - The authors and contributors provide no warranty, support, or assistance
+     for any illegal or unauthorized use of this software.
+   - Users assume full legal responsibility for their actions.
+
+5. LIMITATION OF LIABILITY
+   - In no event shall the authors or contributors be liable for any damages
+     arising from the use or misuse of this software.
+   - This includes but is not limited to direct, indirect, incidental, or 
+     consequential damages.
+
+By downloading, installing, or using this software, you acknowledge that you
+have read, understood, and agree to be bound by these terms. If you do not
+agree to these terms, you must not use this software.
+
+For questions regarding appropriate use, please consult with legal counsel
+familiar with cybersecurity law in your jurisdiction.
