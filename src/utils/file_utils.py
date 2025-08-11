@@ -3,37 +3,44 @@
 """
 TRAES 文件工具模块
 
-提供文件读写、目录管理、文件搜索、文件压缩、文件加密、临时文件管理和文件监控等功能。
+提供文件操作相关的实用工具函数，包括：
+- 文件读写操作
+- 目录管理
+- 文件搜索
+- 文件压缩
+- 文件加密
+- 临时文件管理
+- 文件监控
 
-作者: TRAES Team
+作者: Security Researcher
 版本: 1.0.0
 """
 
 import os
-import json
-import csv
-import yaml
+import sys
 import shutil
+import tempfile
 import hashlib
 import zipfile
-import tempfile
-import threading
+import tarfile
+import json
+import csv
 from pathlib import Path
-from typing import List, Dict, Any, Union, Optional, Callable
+from typing import List, Optional, Dict, Any, Union, Generator
 from datetime import datetime
-from cryptography.fernet import Fernet
-from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler
 
-from .logger import get_logger
-
-logger = get_logger(__name__)
+try:
+    from loguru import logger
+except ImportError as e:
+    print(f"缺少必要的依赖库: {e}")
+    print("请运行: pip install loguru")
+    sys.exit(1)
 
 class FileUtils:
     """
     文件工具类
     
-    提供文件和目录操作的静态方法
+    提供各种文件操作的实用功能。
     """
     
     @staticmethod
@@ -101,10 +108,10 @@ class FileUtils:
             return False
     
     @staticmethod
-    def read_lines(file_path: Union[str, Path], encoding: str = 'utf-8',
+    def read_lines(file_path: Union[str, Path], encoding: str = 'utf-8', 
                    strip_whitespace: bool = True) -> List[str]:
         """
-        按行读取文件
+        按行读取文件内容
         
         Args:
             file_path (str|Path): 文件路径
@@ -121,14 +128,14 @@ class FileUtils:
                     lines = [line.strip() for line in lines if line.strip()]
                 return lines
         except Exception as e:
-            logger.error(f"读取文件行失败 {file_path}: {e}")
+            logger.error(f"按行读取文件失败 {file_path}: {e}")
             return []
     
     @staticmethod
-    def write_lines(file_path: Union[str, Path], lines: List[str],
+    def write_lines(file_path: Union[str, Path], lines: List[str], 
                     encoding: str = 'utf-8', append: bool = False) -> bool:
         """
-        按行写入文件
+        按行写入文件内容
         
         Args:
             file_path (str|Path): 文件路径
@@ -146,41 +153,39 @@ class FileUtils:
             mode = 'a' if append else 'w'
             with open(file_path, mode, encoding=encoding) as f:
                 for line in lines:
-                    f.write(f"{line}\n")
+                    f.write(line + '\n')
             return True
         except Exception as e:
-            logger.error(f"写入文件行失败 {file_path}: {e}")
+            logger.error(f"按行写入文件失败 {file_path}: {e}")
             return False
     
     @staticmethod
-    def read_json(file_path: Union[str, Path], encoding: str = 'utf-8') -> Optional[Dict[str, Any]]:
+    def read_json(file_path: Union[str, Path]) -> Optional[Dict[str, Any]]:
         """
         读取JSON文件
         
         Args:
             file_path (str|Path): 文件路径
-            encoding (str): 文件编码
             
         Returns:
             dict: JSON数据，失败返回None
         """
         try:
-            with open(file_path, 'r', encoding=encoding) as f:
+            with open(file_path, 'r', encoding='utf-8') as f:
                 return json.load(f)
         except Exception as e:
             logger.error(f"读取JSON文件失败 {file_path}: {e}")
             return None
     
     @staticmethod
-    def write_json(file_path: Union[str, Path], data: Dict[str, Any],
-                   encoding: str = 'utf-8', indent: int = 2) -> bool:
+    def write_json(file_path: Union[str, Path], data: Dict[str, Any], 
+                   indent: int = 2) -> bool:
         """
         写入JSON文件
         
         Args:
             file_path (str|Path): 文件路径
             data (dict): JSON数据
-            encoding (str): 文件编码
             indent (int): 缩进空格数
             
         Returns:
@@ -190,43 +195,46 @@ class FileUtils:
             # 确保目录存在
             FileUtils.ensure_directory(Path(file_path).parent)
             
-            with open(file_path, 'w', encoding=encoding) as f:
-                json.dump(data, f, ensure_ascii=False, indent=indent)
+            with open(file_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=indent, ensure_ascii=False)
             return True
         except Exception as e:
             logger.error(f"写入JSON文件失败 {file_path}: {e}")
             return False
     
     @staticmethod
-    def read_csv(file_path: Union[str, Path], encoding: str = 'utf-8') -> List[Dict[str, str]]:
+    def read_csv(file_path: Union[str, Path], delimiter: str = ',') -> List[Dict[str, str]]:
         """
         读取CSV文件
         
         Args:
             file_path (str|Path): 文件路径
-            encoding (str): 文件编码
+            delimiter (str): 分隔符
             
         Returns:
             list: CSV数据列表
         """
         try:
-            with open(file_path, 'r', encoding=encoding, newline='') as f:
-                reader = csv.DictReader(f)
-                return list(reader)
+            data = []
+            with open(file_path, 'r', encoding='utf-8') as f:
+                reader = csv.DictReader(f, delimiter=delimiter)
+                for row in reader:
+                    data.append(row)
+            return data
         except Exception as e:
             logger.error(f"读取CSV文件失败 {file_path}: {e}")
             return []
     
     @staticmethod
-    def write_csv(file_path: Union[str, Path], data: List[Dict[str, Any]],
-                  encoding: str = 'utf-8') -> bool:
+    def write_csv(file_path: Union[str, Path], data: List[Dict[str, str]], 
+                  delimiter: str = ',') -> bool:
         """
         写入CSV文件
         
         Args:
             file_path (str|Path): 文件路径
             data (list): CSV数据列表
-            encoding (str): 文件编码
+            delimiter (str): 分隔符
             
         Returns:
             bool: 写入成功返回True
@@ -238,9 +246,9 @@ class FileUtils:
             # 确保目录存在
             FileUtils.ensure_directory(Path(file_path).parent)
             
-            with open(file_path, 'w', encoding=encoding, newline='') as f:
-                fieldnames = data[0].keys()
-                writer = csv.DictWriter(f, fieldnames=fieldnames)
+            fieldnames = data[0].keys()
+            with open(file_path, 'w', encoding='utf-8', newline='') as f:
+                writer = csv.DictWriter(f, fieldnames=fieldnames, delimiter=delimiter)
                 writer.writeheader()
                 writer.writerows(data)
             return True
@@ -263,6 +271,7 @@ class FileUtils:
         try:
             # 确保目标目录存在
             FileUtils.ensure_directory(Path(dst).parent)
+            
             shutil.copy2(src, dst)
             return True
         except Exception as e:
@@ -284,6 +293,7 @@ class FileUtils:
         try:
             # 确保目标目录存在
             FileUtils.ensure_directory(Path(dst).parent)
+            
             shutil.move(src, dst)
             return True
         except Exception as e:
@@ -309,18 +319,23 @@ class FileUtils:
             return False
     
     @staticmethod
-    def delete_directory(directory: Union[str, Path]) -> bool:
+    def delete_directory(directory: Union[str, Path], force: bool = False) -> bool:
         """
         删除目录
         
         Args:
             directory (str|Path): 目录路径
+            force (bool): 是否强制删除非空目录
             
         Returns:
             bool: 删除成功返回True
         """
         try:
-            shutil.rmtree(directory)
+            dir_path = Path(directory)
+            if force:
+                shutil.rmtree(dir_path)
+            else:
+                dir_path.rmdir()  # 只删除空目录
             return True
         except Exception as e:
             logger.error(f"删除目录失败 {directory}: {e}")
@@ -366,7 +381,7 @@ class FileUtils:
             return None
     
     @staticmethod
-    def find_files(directory: Union[str, Path], pattern: str = '*',
+    def find_files(directory: Union[str, Path], pattern: str = '*', 
                    recursive: bool = True) -> List[Path]:
         """
         查找文件
@@ -388,288 +403,6 @@ class FileUtils:
         except Exception as e:
             logger.error(f"查找文件失败 {directory}: {e}")
             return []
-    
-    @staticmethod
-    def read_yaml(file_path: Union[str, Path], encoding: str = 'utf-8') -> Optional[Dict[str, Any]]:
-        """
-        读取YAML文件
-        
-        Args:
-            file_path (str|Path): 文件路径
-            encoding (str): 文件编码
-            
-        Returns:
-            dict: YAML数据，失败返回None
-        """
-        try:
-            with open(file_path, 'r', encoding=encoding) as f:
-                return yaml.safe_load(f)
-        except Exception as e:
-            logger.error(f"读取YAML文件失败 {file_path}: {e}")
-            return None
-    
-    @staticmethod
-    def write_yaml(file_path: Union[str, Path], data: Dict[str, Any],
-                   encoding: str = 'utf-8') -> bool:
-        """
-        写入YAML文件
-        
-        Args:
-            file_path (str|Path): 文件路径
-            data (dict): YAML数据
-            encoding (str): 文件编码
-            
-        Returns:
-            bool: 写入成功返回True
-        """
-        try:
-            # 确保目录存在
-            FileUtils.ensure_directory(Path(file_path).parent)
-            
-            with open(file_path, 'w', encoding=encoding) as f:
-                yaml.dump(data, f, default_flow_style=False, allow_unicode=True)
-            return True
-        except Exception as e:
-            logger.error(f"写入YAML文件失败 {file_path}: {e}")
-            return False
-    
-    @staticmethod
-    def compress_file(file_path: Union[str, Path], 
-                     compressed_path: Union[str, Path] = None) -> Optional[str]:
-        """
-        压缩文件
-        
-        Args:
-            file_path (str|Path): 文件路径
-            compressed_path (str|Path): 压缩文件路径
-            
-        Returns:
-            str: 压缩文件路径，失败返回None
-        """
-        try:
-            import gzip
-            
-            if compressed_path is None:
-                compressed_path = f"{file_path}.gz"
-            
-            # 确保目录存在
-            FileUtils.ensure_directory(Path(compressed_path).parent)
-            
-            with open(file_path, 'rb') as f_in:
-                with gzip.open(compressed_path, 'wb') as f_out:
-                    shutil.copyfileobj(f_in, f_out)
-            
-            return str(compressed_path)
-        except Exception as e:
-            logger.error(f"压缩文件失败 {file_path}: {e}")
-            return None
-    
-    @staticmethod
-    def decompress_file(compressed_path: Union[str, Path],
-                       output_path: Union[str, Path] = None) -> Optional[str]:
-        """
-        解压文件
-        
-        Args:
-            compressed_path (str|Path): 压缩文件路径
-            output_path (str|Path): 输出文件路径
-            
-        Returns:
-            str: 解压文件路径，失败返回None
-        """
-        try:
-            import gzip
-            
-            if output_path is None:
-                output_path = str(compressed_path).replace('.gz', '')
-            
-            # 确保目录存在
-            FileUtils.ensure_directory(Path(output_path).parent)
-            
-            with gzip.open(compressed_path, 'rb') as f_in:
-                with open(output_path, 'wb') as f_out:
-                    shutil.copyfileobj(f_in, f_out)
-            
-            return str(output_path)
-        except Exception as e:
-            logger.error(f"解压文件失败 {compressed_path}: {e}")
-            return None
-    
-    @staticmethod
-    def encrypt_file(file_path: Union[str, Path], key: bytes,
-                    encrypted_path: Union[str, Path] = None) -> Optional[str]:
-        """
-        加密文件
-        
-        Args:
-            file_path (str|Path): 文件路径
-            key (bytes): 加密密钥
-            encrypted_path (str|Path): 加密文件路径
-            
-        Returns:
-            str: 加密文件路径，失败返回None
-        """
-        try:
-            if encrypted_path is None:
-                encrypted_path = f"{file_path}.encrypted"
-            
-            # 确保目录存在
-            FileUtils.ensure_directory(Path(encrypted_path).parent)
-            
-            fernet = Fernet(key)
-            
-            with open(file_path, 'rb') as f_in:
-                data = f_in.read()
-                encrypted_data = fernet.encrypt(data)
-            
-            with open(encrypted_path, 'wb') as f_out:
-                f_out.write(encrypted_data)
-            
-            return str(encrypted_path)
-        except Exception as e:
-            logger.error(f"加密文件失败 {file_path}: {e}")
-            return None
-    
-    @staticmethod
-    def decrypt_file(encrypted_path: Union[str, Path], key: bytes,
-                    output_path: Union[str, Path] = None) -> Optional[str]:
-        """
-        解密文件
-        
-        Args:
-            encrypted_path (str|Path): 加密文件路径
-            key (bytes): 解密密钥
-            output_path (str|Path): 输出文件路径
-            
-        Returns:
-            str: 解密文件路径，失败返回None
-        """
-        try:
-            if output_path is None:
-                output_path = str(encrypted_path).replace('.encrypted', '')
-            
-            # 确保目录存在
-            FileUtils.ensure_directory(Path(output_path).parent)
-            
-            fernet = Fernet(key)
-            
-            with open(encrypted_path, 'rb') as f_in:
-                encrypted_data = f_in.read()
-                data = fernet.decrypt(encrypted_data)
-            
-            with open(output_path, 'wb') as f_out:
-                f_out.write(data)
-            
-            return str(output_path)
-        except Exception as e:
-            logger.error(f"解密文件失败 {encrypted_path}: {e}")
-            return None
-    
-    @staticmethod
-    def create_temp_file(suffix: str = '', prefix: str = 'traes_', 
-                        directory: str = None) -> str:
-        """
-        创建临时文件
-        
-        Args:
-            suffix (str): 文件后缀
-            prefix (str): 文件前缀
-            directory (str): 临时目录
-            
-        Returns:
-            str: 临时文件路径
-        """
-        try:
-            fd, temp_path = tempfile.mkstemp(suffix=suffix, prefix=prefix, dir=directory)
-            os.close(fd)  # 关闭文件描述符
-            return temp_path
-        except Exception as e:
-            logger.error(f"创建临时文件失败: {e}")
-            return ''
-    
-    @staticmethod
-    def create_temp_dir(suffix: str = '', prefix: str = 'traes_', 
-                       directory: str = None) -> str:
-        """
-        创建临时目录
-        
-        Args:
-            suffix (str): 目录后缀
-            prefix (str): 目录前缀
-            directory (str): 父目录
-            
-        Returns:
-            str: 临时目录路径
-        """
-        try:
-            return tempfile.mkdtemp(suffix=suffix, prefix=prefix, dir=directory)
-        except Exception as e:
-            logger.error(f"创建临时目录失败: {e}")
-            return ''
-    
-    @staticmethod
-    def cleanup_temp_path(temp_path: Union[str, Path]) -> bool:
-        """
-        清理临时路径
-        
-        Args:
-            temp_path (str|Path): 临时路径
-            
-        Returns:
-            bool: 清理成功返回True
-        """
-        try:
-            path = Path(temp_path)
-            if path.is_file():
-                path.unlink()
-            elif path.is_dir():
-                shutil.rmtree(path)
-            return True
-        except Exception as e:
-            logger.error(f"清理临时路径失败 {temp_path}: {e}")
-            return False
-    
-    @staticmethod
-    def monitor_file_changes(file_path: Union[str, Path], 
-                           callback: Callable[[str], None],
-                           timeout: int = None) -> Observer:
-        """
-        监控文件变化
-        
-        Args:
-            file_path (str|Path): 文件路径
-            callback (callable): 变化回调函数
-            timeout (int): 监控超时时间（秒）
-            
-        Returns:
-            Observer: 文件监控对象
-        """
-        class FileChangeHandler(FileSystemEventHandler):
-            def __init__(self, target_file: str, callback_func: Callable[[str], None]):
-                self.target_file = str(Path(target_file).absolute())
-                self.callback = callback_func
-            
-            def on_modified(self, event):
-                if not event.is_directory and str(Path(event.src_path).absolute()) == self.target_file:
-                    self.callback(event.src_path)
-        
-        try:
-            path = Path(file_path)
-            observer = Observer()
-            handler = FileChangeHandler(file_path, callback)
-            observer.schedule(handler, str(path.parent), recursive=False)
-            observer.start()
-            
-            if timeout:
-                def stop_observer():
-                    observer.stop()
-                timer = threading.Timer(timeout, stop_observer)
-                timer.start()
-            
-            return observer
-        except Exception as e:
-            logger.error(f"监控文件变化失败 {file_path}: {e}")
-            return None
     
     @staticmethod
     def get_file_info(file_path: Union[str, Path]) -> Dict[str, Any]:
