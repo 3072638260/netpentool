@@ -1,0 +1,33 @@
+# Network Security Testing Framework Dependencies
+# Core networking and packet manipulation
+scapy>=2.4.5
+
+# Terminal output formatting
+colorama>=0.4.4
+
+# HTTP requests and web testing
+requests>=2.25.1
+
+# Cryptographic operations
+pycryptodome>=3.15.0
+
+# Network interface management
+psutil>=5.8.0
+
+# Concurrent processing
+concurrent-futures>=3.1.1
+
+# Configuration file handling
+PyYAML>=6.0
+
+# Progress bars and status indicators
+tqdm>=4.62.0
+
+# Command line argument parsing (built-in, listed for completeness)
+# argparse - included in Python standard library
+
+# JSON handling (built-in, listed for completeness)
+# json - included in Python standard library
+
+# Regular expressions (built-in, listed for completeness)
+# re - included in Python standard library
