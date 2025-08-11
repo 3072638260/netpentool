@@ -3,45 +3,36 @@
 """
 TRAES 加密工具模块
 
-提供加密解密相关的实用工具函数，包括：
-- 对称加密/解密
-- 非对称加密/解密
-- 哈希计算
-- 密码生成
-- 数字签名
-- 密钥管理
-- 编码转换
+提供对称加密/解密、非对称加密/解密、哈希计算、密码生成、数字签名、密钥管理和编码转换等功能。
 
-作者: Security Researcher
+作者: TRAES团队
 版本: 1.0.0
+创建时间: 2024-01-01
 """
 
 import os
-import sys
 import base64
 import hashlib
 import hmac
 import secrets
 import string
 from typing import Optional, Union, Tuple, Dict, Any
+from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import rsa, padding
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.backends import default_backend
 
-try:
-    from cryptography.fernet import Fernet
-    from cryptography.hazmat.primitives import hashes, serialization
-    from cryptography.hazmat.primitives.asymmetric import rsa, padding
-    from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
-    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-    from loguru import logger
-except ImportError as e:
-    print(f"缺少必要的依赖库: {e}")
-    print("请运行: pip install cryptography loguru")
-    sys.exit(1)
+# 配置日志
+import logging
+logger = logging.getLogger(__name__)
 
 class CryptoUtils:
     """
     加密工具类
     
-    提供各种加密解密功能。
+    提供各种加密、解密、哈希和编码功能
     """
     
     @staticmethod
@@ -50,7 +41,7 @@ class CryptoUtils:
         生成Fernet密钥
         
         Returns:
-            bytes: 32字节的密钥
+            bytes: Fernet密钥
         """
         return Fernet.generate_key()
     
@@ -95,10 +86,9 @@ class CryptoUtils:
                 data = data.encode('utf-8')
             
             f = Fernet(key)
-            encrypted_data = f.encrypt(data)
-            return encrypted_data
+            return f.encrypt(data)
         except Exception as e:
-            logger.error(f"加密数据失败: {e}")
+            logger.error(f"数据加密失败: {e}")
             return None
     
     @staticmethod
@@ -115,10 +105,9 @@ class CryptoUtils:
         """
         try:
             f = Fernet(key)
-            decrypted_data = f.decrypt(encrypted_data)
-            return decrypted_data
+            return f.decrypt(encrypted_data)
         except Exception as e:
-            logger.error(f"解密数据失败: {e}")
+            logger.error(f"数据解密失败: {e}")
             return None
     
     @staticmethod
@@ -129,15 +118,12 @@ class CryptoUtils:
         Args:
             file_path (str): 源文件路径
             key (bytes): 加密密钥
-            output_path (str): 输出文件路径，默认为源文件+.enc
+            output_path (str): 输出文件路径，如果为None则覆盖原文件
             
         Returns:
-            bool: 加密成功返回True
+            bool: 是否成功
         """
         try:
-            if output_path is None:
-                output_path = file_path + '.enc'
-            
             with open(file_path, 'rb') as f:
                 data = f.read()
             
@@ -145,49 +131,47 @@ class CryptoUtils:
             if encrypted_data is None:
                 return False
             
+            if output_path is None:
+                output_path = file_path
+            
             with open(output_path, 'wb') as f:
                 f.write(encrypted_data)
             
-            logger.info(f"文件加密成功: {output_path}")
             return True
         except Exception as e:
-            logger.error(f"加密文件失败 {file_path}: {e}")
+            logger.error(f"文件加密失败: {e}")
             return False
     
     @staticmethod
-    def decrypt_file(encrypted_file_path: str, key: bytes, output_path: str = None) -> bool:
+    def decrypt_file(file_path: str, key: bytes, output_path: str = None) -> bool:
         """
         解密文件
         
         Args:
-            encrypted_file_path (str): 加密文件路径
+            file_path (str): 加密文件路径
             key (bytes): 解密密钥
-            output_path (str): 输出文件路径，默认去除.enc后缀
+            output_path (str): 输出文件路径，如果为None则覆盖原文件
             
         Returns:
-            bool: 解密成功返回True
+            bool: 是否成功
         """
         try:
-            if output_path is None:
-                if encrypted_file_path.endswith('.enc'):
-                    output_path = encrypted_file_path[:-4]
-                else:
-                    output_path = encrypted_file_path + '.dec'
-            
-            with open(encrypted_file_path, 'rb') as f:
+            with open(file_path, 'rb') as f:
                 encrypted_data = f.read()
             
             decrypted_data = CryptoUtils.decrypt_data(encrypted_data, key)
             if decrypted_data is None:
                 return False
             
+            if output_path is None:
+                output_path = file_path
+            
             with open(output_path, 'wb') as f:
                 f.write(decrypted_data)
             
-            logger.info(f"文件解密成功: {output_path}")
             return True
         except Exception as e:
-            logger.error(f"解密文件失败 {encrypted_file_path}: {e}")
+            logger.error(f"文件解密失败: {e}")
             return False
     
     @staticmethod
@@ -201,28 +185,25 @@ class CryptoUtils:
         Returns:
             tuple: (私钥PEM, 公钥PEM)
         """
-        try:
-            private_key = rsa.generate_private_key(
-                public_exponent=65537,
-                key_size=key_size,
-            )
-            
-            private_pem = private_key.private_bytes(
-                encoding=serialization.Encoding.PEM,
-                format=serialization.PrivateFormat.PKCS8,
-                encryption_algorithm=serialization.NoEncryption()
-            )
-            
-            public_key = private_key.public_key()
-            public_pem = public_key.public_bytes(
-                encoding=serialization.Encoding.PEM,
-                format=serialization.PublicFormat.SubjectPublicKeyInfo
-            )
-            
-            return private_pem, public_pem
-        except Exception as e:
-            logger.error(f"生成RSA密钥对失败: {e}")
-            return b'', b''
+        private_key = rsa.generate_private_key(
+            public_exponent=65537,
+            key_size=key_size,
+            backend=default_backend()
+        )
+        
+        private_pem = private_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption()
+        )
+        
+        public_key = private_key.public_key()
+        public_pem = public_key.public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo
+        )
+        
+        return private_pem, public_pem
     
     @staticmethod
     def rsa_encrypt(data: Union[str, bytes], public_key_pem: bytes) -> Optional[bytes]:
@@ -240,9 +221,12 @@ class CryptoUtils:
             if isinstance(data, str):
                 data = data.encode('utf-8')
             
-            public_key = serialization.load_pem_public_key(public_key_pem)
+            public_key = serialization.load_pem_public_key(
+                public_key_pem,
+                backend=default_backend()
+            )
             
-            encrypted_data = public_key.encrypt(
+            encrypted = public_key.encrypt(
                 data,
                 padding.OAEP(
                     mgf=padding.MGF1(algorithm=hashes.SHA256()),
@@ -251,7 +235,7 @@ class CryptoUtils:
                 )
             )
             
-            return encrypted_data
+            return encrypted
         except Exception as e:
             logger.error(f"RSA加密失败: {e}")
             return None
@@ -270,11 +254,12 @@ class CryptoUtils:
         """
         try:
             private_key = serialization.load_pem_private_key(
-                private_key_pem, 
-                password=None
+                private_key_pem,
+                password=None,
+                backend=default_backend()
             )
             
-            decrypted_data = private_key.decrypt(
+            decrypted = private_key.decrypt(
                 encrypted_data,
                 padding.OAEP(
                     mgf=padding.MGF1(algorithm=hashes.SHA256()),
@@ -283,7 +268,7 @@ class CryptoUtils:
                 )
             )
             
-            return decrypted_data
+            return decrypted
         except Exception as e:
             logger.error(f"RSA解密失败: {e}")
             return None
@@ -298,7 +283,7 @@ class CryptoUtils:
             algorithm (str): 哈希算法 (md5, sha1, sha256, sha512)
             
         Returns:
-            str: 哈希值的十六进制字符串
+            str: 十六进制哈希值
         """
         try:
             if isinstance(data, str):
@@ -308,7 +293,7 @@ class CryptoUtils:
             hash_obj.update(data)
             return hash_obj.hexdigest()
         except Exception as e:
-            logger.error(f"计算哈希失败: {e}")
+            logger.error(f"哈希计算失败: {e}")
             return ''
     
     @staticmethod
@@ -321,31 +306,30 @@ class CryptoUtils:
             algorithm (str): 哈希算法
             
         Returns:
-            str: 文件哈希值
+            str: 十六进制哈希值
         """
         try:
             hash_obj = hashlib.new(algorithm)
             with open(file_path, 'rb') as f:
-                for chunk in iter(lambda: f.read(4096), b""):
+                for chunk in iter(lambda: f.read(4096), b''):
                     hash_obj.update(chunk)
             return hash_obj.hexdigest()
         except Exception as e:
-            logger.error(f"计算文件哈希失败 {file_path}: {e}")
+            logger.error(f"文件哈希计算失败: {e}")
             return ''
     
     @staticmethod
-    def calculate_hmac(data: Union[str, bytes], key: Union[str, bytes], 
-                      algorithm: str = 'sha256') -> str:
+    def calculate_hmac(data: Union[str, bytes], key: Union[str, bytes], algorithm: str = 'sha256') -> str:
         """
         计算HMAC
         
         Args:
-            data (str|bytes): 要计算HMAC的数据
-            key (str|bytes): HMAC密钥
+            data (str|bytes): 数据
+            key (str|bytes): 密钥
             algorithm (str): 哈希算法
             
         Returns:
-            str: HMAC值的十六进制字符串
+            str: 十六进制HMAC值
         """
         try:
             if isinstance(data, str):
@@ -353,50 +337,28 @@ class CryptoUtils:
             if isinstance(key, str):
                 key = key.encode('utf-8')
             
-            hash_func = getattr(hashlib, algorithm)
-            hmac_obj = hmac.new(key, data, hash_func)
-            return hmac_obj.hexdigest()
+            return hmac.new(key, data, getattr(hashlib, algorithm)).hexdigest()
         except Exception as e:
-            logger.error(f"计算HMAC失败: {e}")
+            logger.error(f"HMAC计算失败: {e}")
             return ''
     
     @staticmethod
-    def generate_password(length: int = 12, include_symbols: bool = True, 
-                         include_numbers: bool = True, include_uppercase: bool = True, 
-                         include_lowercase: bool = True) -> str:
+    def generate_password(length: int = 12, use_symbols: bool = True) -> str:
         """
         生成随机密码
         
         Args:
             length (int): 密码长度
-            include_symbols (bool): 是否包含符号
-            include_numbers (bool): 是否包含数字
-            include_uppercase (bool): 是否包含大写字母
-            include_lowercase (bool): 是否包含小写字母
+            use_symbols (bool): 是否包含特殊字符
             
         Returns:
-            str: 生成的密码
+            str: 随机密码
         """
-        try:
-            characters = ''
-            
-            if include_lowercase:
-                characters += string.ascii_lowercase
-            if include_uppercase:
-                characters += string.ascii_uppercase
-            if include_numbers:
-                characters += string.digits
-            if include_symbols:
-                characters += '!@#$%^&*()_+-=[]{}|;:,.<>?'
-            
-            if not characters:
-                characters = string.ascii_letters + string.digits
-            
-            password = ''.join(secrets.choice(characters) for _ in range(length))
-            return password
-        except Exception as e:
-            logger.error(f"生成密码失败: {e}")
-            return ''
+        characters = string.ascii_letters + string.digits
+        if use_symbols:
+            characters += '!@#$%^&*()_+-=[]{}|;:,.<>?'
+        
+        return ''.join(secrets.choice(characters) for _ in range(length))
     
     @staticmethod
     def generate_salt(length: int = 16) -> bytes:
