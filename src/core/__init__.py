@@ -1,135 +1,83 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
-NetPenTool Core Modules
+TRAES 核心攻击模块包
 
-This package contains the core attack and exploitation modules for the
-NetPenTool framework. Each module implements specific attack vectors
-commonly used in authorized penetration testing.
+本包包含TRAES工具集的核心攻击功能模块：
+- ARP攻击模块 (arp.py)
+- DHCP攻击模块 (dhcp.py) 
+- 密码爆破模块 (bruteforce.py)
 
-Modules:
-    arp_module: ARP spoofing and network manipulation
-    dhcp_module: DHCP exploitation and network disruption
-    bruteforce_module: Authentication testing and credential validation
-
-Security Notice:
-    These modules are designed for authorized security testing only.
-    Ensure proper authorization before use.
+所有模块都遵循统一的接口设计，支持配置文件和命令行参数。
 """
 
-import logging
-from typing import Optional, Dict, Any
-
-# Module version and metadata
-__version__ = "1.0.0"
-__author__ = "Security Research Team"
-
-# Configure module logger
-logger = logging.getLogger(__name__)
-
-# Module availability tracking
-_available_modules = {}
-
-def _check_module_dependencies(module_name: str, required_packages: list) -> bool:
-    """
-    Check if required dependencies are available for a module.
-    
-    Args:
-        module_name: Name of the module to check
-        required_packages: List of required package names
-        
-    Returns:
-        bool: True if all dependencies are available
-    """
-    missing_packages = []
-    
-    for package in required_packages:
-        try:
-            __import__(package)
-        except ImportError:
-            missing_packages.append(package)
-    
-    if missing_packages:
-        logger.warning(f"Module {module_name} unavailable. Missing: {missing_packages}")
-        return False
-    
-    return True
-
-# ARP Module
+# 尝试导入各个攻击模块
 try:
-    if _check_module_dependencies('arp', ['scapy']):
-        from . import arp
-        arp_module = arp
-        _available_modules['arp'] = True
-        logger.debug("ARP module loaded successfully")
-    else:
-        arp_module = None
-        _available_modules['arp'] = False
-except ImportError as e:
-    logger.warning(f"Failed to load ARP module: {e}")
+    from .arp import ARPAttack
+    arp_module = ARPAttack
+except ImportError:
     arp_module = None
-    _available_modules['arp'] = False
 
-# DHCP Module
 try:
-    if _check_module_dependencies('dhcp', ['scapy']):
-        from . import dhcp
-        dhcp_module = dhcp
-        _available_modules['dhcp'] = True
-        logger.debug("DHCP module loaded successfully")
-    else:
-        dhcp_module = None
-        _available_modules['dhcp'] = False
-except ImportError as e:
-    logger.warning(f"Failed to load DHCP module: {e}")
+    from .dhcp import DHCPAttack
+    dhcp_module = DHCPAttack
+except ImportError:
     dhcp_module = None
-    _available_modules['dhcp'] = False
 
-# Bruteforce Module
 try:
-    if _check_module_dependencies('bruteforce', ['requests']):
-        from . import bruteforce
-        bruteforce_module = bruteforce
-        _available_modules['bruteforce'] = True
-        logger.debug("Bruteforce module loaded successfully")
-    else:
-        bruteforce_module = None
-        _available_modules['bruteforce'] = False
-except ImportError as e:
-    logger.warning(f"Failed to load Bruteforce module: {e}")
+    from .bruteforce import BruteForce
+    bruteforce_module = BruteForce
+except ImportError:
     bruteforce_module = None
-    _available_modules['bruteforce'] = False
 
-def get_available_modules() -> Dict[str, bool]:
+# 模块依赖检查
+def check_dependencies():
     """
-    Get the availability status of all core modules.
+    检查核心模块的依赖是否满足
     
     Returns:
-        Dict[str, bool]: Module name to availability mapping
+        dict: 依赖检查结果
     """
-    return _available_modules.copy()
-
-def get_module_info() -> Dict[str, Any]:
-    """
-    Get comprehensive information about the core modules package.
-    
-    Returns:
-        Dict[str, Any]: Package information including version, modules, etc.
-    """
-    return {
-        'version': __version__,
-        'author': __author__,
-        'available_modules': _available_modules,
-        'total_modules': len(_available_modules),
-        'loaded_modules': sum(_available_modules.values())
+    dependencies = {
+        'scapy': False,
+        'psutil': False,
+        'colorama': False,
+        'loguru': False
     }
+    
+    try:
+        import scapy
+        dependencies['scapy'] = True
+    except ImportError:
+        pass
+        
+    try:
+        import psutil
+        dependencies['psutil'] = True
+    except ImportError:
+        pass
+        
+    try:
+        import colorama
+        dependencies['colorama'] = True
+    except ImportError:
+        pass
+        
+    try:
+        import loguru
+        dependencies['loguru'] = True
+    except ImportError:
+        pass
+    
+    return dependencies
 
-# Export public API
+# 导出的模块列表
 __all__ = [
+    'ARPAttack',
+    'DHCPAttack', 
+    'BruteForce',
+    'check_dependencies',
     'arp_module',
     'dhcp_module',
-    'bruteforce_module',
-    'get_available_modules',
-    'get_module_info',
-    '__version__',
-    '__author__'
+    'bruteforce_module'
 ]
