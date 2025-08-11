@@ -1,63 +1,80 @@
 {
   "logging": {
     "level": "INFO",
-    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     "file": "logs/traes.log",
     "max_size": "10MB",
-    "backup_count": 5
+    "backup_count": 5,
+    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
   },
   "network": {
+    "default_interface": "auto",
     "timeout": 5,
     "retry_count": 3,
-    "default_interface": "auto",
-    "packet_size": 1024
+    "packet_delay": 0.1
   },
-  "arp_attack": {
-    "default_interval": 1.0,
-    "max_targets": 254,
-    "spoof_detection": true,
-    "restore_on_exit": true
-  },
-  "dhcp_attack": {
-    "default_threads": 10,
-    "max_threads": 50,
-    "request_timeout": 10,
-    "discover_interval": 0.1,
-    "client_id_prefix": "TRAES"
-  },
-  "bruteforce": {
-    "default_threads": 5,
-    "max_threads": 20,
-    "connection_timeout": 10,
-    "delay_between_attempts": 0.5,
-    "max_attempts_per_target": 1000
+  "attack": {
+    "arp": {
+      "interval": 1.0,
+      "packet_count": 0,
+      "restore_on_exit": true,
+      "spoof_mode": "bidirectional",
+      "max_targets": 50
+    },
+    "dhcp": {
+      "thread_count": 10,
+      "request_rate": 100,
+      "mac_randomization": true,
+      "vendor_classes": [
+        "MSFT 5.0",
+        "android-dhcp",
+        "dhcpcd"
+      ]
+    },
+    "bruteforce": {
+      "thread_count": 5,
+      "delay_between_attempts": 1,
+      "max_attempts_per_target": 1000,
+      "timeout_per_attempt": 10,
+      "default_ports": {
+        "ssh": 22,
+        "ftp": 21,
+        "telnet": 23,
+        "http": 80,
+        "https": 443
+      }
+    }
   },
   "security": {
-    "whitelist_enabled": false,
-    "whitelist_ips": [],
-    "blacklist_enabled": false,
-    "blacklist_ips": [],
-    "safe_mode": false
-  },
-  "rate_limiting": {
-    "enabled": true,
-    "max_requests_per_second": 10,
-    "burst_size": 20
+    "whitelist": {
+      "enabled": true,
+      "ips": [
+        "192.168.1.1",
+        "192.168.1.254"
+      ],
+      "macs": [],
+      "subnets": []
+    },
+    "rate_limiting": {
+      "enabled": true,
+      "max_packets_per_second": 100,
+      "burst_size": 50
+    }
   },
   "output": {
-    "format": "json",
     "save_results": true,
-    "results_directory": "results",
-    "timestamp_format": "%Y%m%d_%H%M%S"
+    "results_directory": "data/results",
+    "format": "json",
+    "include_timestamps": true,
+    "compress_logs": false
   },
   "performance": {
-    "memory_limit": "512MB",
-    "cpu_limit": 80,
-    "optimize_for": "speed"
+    "max_memory_usage": "512MB",
+    "cpu_limit_percent": 80,
+    "disk_space_threshold": "1GB"
   },
-  "dictionaries": {
-    "usernames": "data/usernames.txt",
-    "passwords": "data/passwords.txt",
-    "common_ports": "data/common_ports.txt"
+  "wordlists": {
+    "usernames": "data/wordlists/usernames.txt",
+    "passwords": "data/wordlists/passwords.txt",
+    "common_passwords": "data/wordlists/common.txt"
   }
 }
