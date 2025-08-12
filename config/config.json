@@ -29,19 +29,6 @@
         "android-dhcp",
         "dhcpcd"
       ]
-    },
-    "bruteforce": {
-      "thread_count": 5,
-      "delay_between_attempts": 1,
-      "max_attempts_per_target": 1000,
-      "timeout_per_attempt": 10,
-      "default_ports": {
-        "ssh": 22,
-        "ftp": 21,
-        "telnet": 23,
-        "http": 80,
-        "https": 443
-      }
     }
   },
   "security": {
@@ -71,10 +58,5 @@
     "max_memory_usage": "512MB",
     "cpu_limit_percent": 80,
     "disk_space_threshold": "1GB"
-  },
-  "wordlists": {
-    "usernames": "data/wordlists/usernames.txt",
-    "passwords": "data/wordlists/passwords.txt",
-    "common_passwords": "data/wordlists/common.txt"
   }
 }
