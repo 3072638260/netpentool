@@ -68,7 +68,7 @@ class ARPAttack:
     
     def get_mac_address(self, ip: str, interface: str = None) -> Optional[str]:
         """
-        获取指定IP地址的MAC地址
+        获取指定IP地址的MAC地址（增强版）
         
         Args:
             ip (str): 目标IP地址
@@ -80,24 +80,133 @@ class ARPAttack:
         try:
             if interface:
                 conf.iface = interface
+            
+            # 方法1: 检查本地ARP表
+            mac = self._get_mac_from_arp_table(ip)
+            if mac:
+                logger.debug(f"从ARP表获取到 {ip} 的MAC地址: {mac}")
+                return mac
+            
+            # 方法2: 使用ping预热网络连接
+            self._ping_target(ip)
+            
+            # 方法3: 发送ARP请求（多次重试）
+            for attempt in range(3):
+                logger.debug(f"尝试获取 {ip} 的MAC地址 (第{attempt+1}次)")
                 
-            # 创建ARP请求包
-            arp_request = ARP(pdst=ip)
-            broadcast = Ether(dst="ff:ff:ff:ff:ff:ff")
-            arp_request_broadcast = broadcast / arp_request
+                # 创建ARP请求包
+                arp_request = ARP(pdst=ip)
+                broadcast = Ether(dst="ff:ff:ff:ff:ff:ff")
+                arp_request_broadcast = broadcast / arp_request
+                
+                # 发送请求并接收响应，增加超时时间
+                answered_list = srp(arp_request_broadcast, timeout=3, verbose=False, retry=2)[0]
+                
+                if answered_list:
+                    mac = answered_list[0][1].hwsrc
+                    logger.info(f"成功获取 {ip} 的MAC地址: {mac}")
+                    return mac
+                
+                # 短暂等待后重试
+                if attempt < 2:
+                    time.sleep(0.5)
             
-            # 发送请求并接收响应
-            answered_list = srp(arp_request_broadcast, timeout=2, verbose=False)[0]
+            # 方法4: 再次检查ARP表（可能ping已经更新了ARP表）
+            mac = self._get_mac_from_arp_table(ip)
+            if mac:
+                logger.info(f"ping后从ARP表获取到 {ip} 的MAC地址: {mac}")
+                return mac
             
-            if answered_list:
-                return answered_list[0][1].hwsrc
-            else:
-                logger.warning(f"无法获取 {ip} 的MAC地址")
-                return None
+            logger.warning(f"所有方法都无法获取 {ip} 的MAC地址")
+            return None
                 
         except Exception as e:
             logger.error(f"获取MAC地址时出错: {e}")
             return None
+    
+    def _get_mac_from_arp_table(self, ip: str) -> Optional[str]:
+        """
+        从系统ARP表中获取MAC地址
+        
+        Args:
+            ip (str): 目标IP地址
+            
+        Returns:
+            str: MAC地址，如果未找到返回None
+        """
+        try:
+            import subprocess
+            import platform
+            
+            system = platform.system().lower()
+            
+            if system == "windows":
+                # Windows系统使用arp命令
+                result = subprocess.run(["arp", "-a", ip], 
+                                      capture_output=True, text=True, timeout=5)
+                if result.returncode == 0 and result.stdout:
+                    lines = result.stdout.strip().split('\n')
+                    for line in lines:
+                        if ip in line and "动态" in line or "dynamic" in line.lower():
+                            parts = line.split()
+                            for part in parts:
+                                if "-" in part and len(part) == 17:  # MAC地址格式 xx-xx-xx-xx-xx-xx
+                                    return part.replace("-", ":")
+            else:
+                # Linux/Mac系统使用arp命令
+                result = subprocess.run(["arp", "-n", ip], 
+                                      capture_output=True, text=True, timeout=5)
+                if result.returncode == 0 and result.stdout:
+                    lines = result.stdout.strip().split('\n')
+                    for line in lines:
+                        if ip in line:
+                            parts = line.split()
+                            for part in parts:
+                                if ":" in part and len(part) == 17:  # MAC地址格式 xx:xx:xx:xx:xx:xx
+                                    return part
+            
+            return None
+            
+        except Exception as e:
+            logger.debug(f"从ARP表获取MAC地址失败: {e}")
+            return None
+    
+    def _ping_target(self, ip: str) -> bool:
+        """
+        ping目标IP以预热网络连接
+        
+        Args:
+            ip (str): 目标IP地址
+            
+        Returns:
+            bool: ping是否成功
+        """
+        try:
+            import subprocess
+            import platform
+            
+            system = platform.system().lower()
+            
+            if system == "windows":
+                # Windows系统
+                cmd = ["ping", "-n", "1", "-w", "1000", ip]
+            else:
+                # Linux/Mac系统
+                cmd = ["ping", "-c", "1", "-W", "1", ip]
+            
+            result = subprocess.run(cmd, capture_output=True, timeout=3)
+            success = result.returncode == 0
+            
+            if success:
+                logger.debug(f"ping {ip} 成功")
+            else:
+                logger.debug(f"ping {ip} 失败")
+            
+            return success
+            
+        except Exception as e:
+            logger.debug(f"ping {ip} 时出错: {e}")
+            return False
     
     def discover_network(self, network: str, interface: str = None) -> List[Dict[str, str]]:
         """
@@ -450,6 +559,28 @@ class ARPAttack:
         
         if self.restore_on_exit:
             self.restore_arp_table()
+    
+    def load_targets_from_file(self, file_path: str) -> List[str]:
+        """
+        从文件中加载目标IP地址列表
+        
+        Args:
+            file_path (str): 文件路径
+            
+        Returns:
+            list: IP地址列表
+        """
+        targets = []
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    ip = line.strip()
+                    if ip and not ip.startswith('#'):
+                        targets.append(ip)
+            logger.info(f"从文件 {file_path} 加载了 {len(targets)} 个目标")
+        except Exception as e:
+            logger.error(f"加载目标文件失败: {e}")
+        return targets
     
     def run(self, args):
         """
